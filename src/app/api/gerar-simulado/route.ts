@@ -232,10 +232,20 @@ const QUESTOES_DB_MOCK = [
     alternativas: ['Ribossomo', 'Complexo de Golgi', 'Mitocôndria', 'Lisossomo', 'Cloroplasto'],
     alternativaCorreta: 2,
     explicacao: 'As mitocôndrias são as "usinas" de energia da célula, realizando o ciclo de Krebs e a cadeia respiratória.',
-    dificuldade: 'Fácil',
     topico: 'Citologia',
     fonte: 'FUVEST 2023',
     ano: 2023
+  },
+  {
+    disciplina: 'Geografia',
+    enunciado: 'Sobre as tendências climáticas para 2025, qual fenômeno tem maior probabilidade de influenciar o regime de chuvas no Brasil?',
+    alternativas: ['La Niña', 'El Niño', 'Monções', 'Ciclones Extratropicais', 'Frentes Frias Estacionárias'],
+    alternativaCorreta: 0,
+    explicacao: 'Modelos climáticos para 2025 indicam a transição para o fenômeno La Niña, que altera a distribuição de chuvas, especialmente no Sul e Nordeste.',
+    dificuldade: 'Média',
+    topico: 'Climatologia',
+    fonte: 'Simulado 2025',
+    ano: 2025
   }
 ];
 
@@ -357,8 +367,8 @@ export async function POST(request: NextRequest) {
         alternativaCorreta: baseQ ? baseQ.alternativaCorreta : 1,
         explicacao: baseQ ? baseQ.explicacao : `Explicação detalhada sobre ${topicoEscolhido.nome} focada no nível ${difQuestao}.`,
         dificuldade: difQuestao,
-        fonte: ano !== 'Todos' ? `${tipoProva} ${ano}` : (baseQ ? baseQ.fonte : `${tipoProva} ${2010 + Math.floor(Math.random() * 15)}`),
-        ano: ano !== 'Todos' ? parseInt(ano) : (baseQ ? (baseQ.ano || 2022) : 2010 + Math.floor(Math.random() * 15))
+        fonte: ano !== 'Todos' ? `${tipoProva} ${ano}` : (baseQ ? baseQ.fonte : `${tipoProva} ${2010 + Math.floor(Math.random() * 16)}`),
+        ano: ano !== 'Todos' ? parseInt(ano) : (baseQ ? (baseQ.ano || 2025) : 2010 + Math.floor(Math.random() * 16))
       });
     }
 

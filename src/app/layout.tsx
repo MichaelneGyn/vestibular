@@ -14,8 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Simulador de Questão Vestibular",
-  description: "Simulador de questões para vestibular.",
+  title: "Simulador de Questões Vestibular | IA",
+  description: "Treine para o ENEM, FUVEST e outros com análise preditiva de IA.",
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({

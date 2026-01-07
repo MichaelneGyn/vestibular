@@ -41,7 +41,9 @@ export function Simulador() {
         tipoProva: '',
         dificuldade: 'Todas',
         probabilidade: 'Todas',
-        modo: 'padrao'
+        modo: 'padrao',
+        ano: 'Todos',
+        busca: ''
     })
 
     const [loadingSimulado, setLoadingSimulado] = useState(false)
@@ -50,6 +52,15 @@ export function Simulador() {
     const [respostas, setRespostas] = useState<Record<string, number>>({})
     const [showResult, setShowResult] = useState(false)
     const [showReportModal, setShowReportModal] = useState(false)
+    const [relatorioErros, setRelatorioErros] = useState<Record<string, { total: number, erros: number }>>({})
+
+    // --- NOVOS ESTADOS (8 MELHORIAS) ---
+    const [timeLeft, setTimeLeft] = useState<number | null>(null)
+    const [xp, setXp] = useState(0)
+    const [streak, setStreak] = useState(0)
+    const [cadernoErros, setCadernoErros] = useState<string[]>([])
+    const [tempoPorQuestao, setTempoPorQuestao] = useState<Record<string, number>>({})
+    const [startTime, setStartTime] = useState<number>(0)
 
     // Dicas de Ouro (Macetes) por Matéria
     const DICAS_POR_MATERIA: Record<string, string> = {
@@ -79,7 +90,31 @@ export function Simulador() {
                 console.error("Erro ao carregar opções", err)
                 setLoadingOptions(false)
             })
+
+        // Carregar Gamificação e Caderno de Erros
+        const savedXp = localStorage.getItem('vestibular_xp')
+        const savedStreak = localStorage.getItem('vestibular_streak')
+        const savedCaderno = localStorage.getItem('vestibular_caderno')
+        if (savedXp) setXp(parseInt(savedXp))
+        if (savedStreak) setStreak(parseInt(savedStreak))
+        if (savedCaderno) setCadernoErros(JSON.parse(savedCaderno))
     }, [])
+
+    // Timer Logic
+    useEffect(() => {
+        if (timeLeft === null || timeLeft <= 0 || showResult) return
+
+        const timer = setInterval(() => {
+            setTimeLeft(prev => (prev !== null && prev > 0) ? prev - 1 : 0)
+        }, 1000)
+
+        if (timeLeft === 0) {
+            finalizarSimulado()
+            toast.error("Tempo esgotado!")
+        }
+
+        return () => clearInterval(timer)
+    }, [timeLeft, showResult])
 
     const gerarSimulado = async (overrideConfig?: Partial<typeof config>) => {
         const activeConfig = { ...config, ...overrideConfig }
@@ -99,7 +134,9 @@ export function Simulador() {
                     tipoProva: activeConfig.tipoProva,
                     dificuldade: activeConfig.dificuldade,
                     probabilidade: activeConfig.probabilidade,
-                    modo: activeConfig.modo
+                    modo: activeConfig.modo,
+                    ano: activeConfig.ano,
+                    busca: activeConfig.busca
                 })
             })
 
@@ -107,6 +144,11 @@ export function Simulador() {
             if (data.simulado && data.simulado.questoes) {
                 setQuestoes(data.simulado.questoes)
                 setAnaliseIA(data.simulado.analiseIA)
+
+                // Iniciar Timer (3 min por questão como no ENEM)
+                setTimeLeft(data.simulado.questoes.length * 180)
+                setStartTime(Date.now())
+
                 if (overrideConfig) {
                     toast.success("Modo 'O Que Mais Cai' ativado com sucesso!")
                 }
@@ -135,7 +177,53 @@ export function Simulador() {
     const finalizarSimulado = () => {
         setShowResult(true)
         setShowReportModal(true)
+
+        // Calcular XP (10 XP por acerto + bônus de tempo se sobrar > 10%)
+        const acertos = calcularAcertos()
+        const bonusTempo = (timeLeft && timeLeft > (questoes.length * 180 * 0.1)) ? 50 : 0
+        const ganhoXp = (acertos * 10) + bonusTempo
+        const novoXp = xp + ganhoXp
+
+        setXp(novoXp)
+        localStorage.setItem('vestibular_xp', novoXp.toString())
+
+        // Atualizar Streak
+        const hoje = new Date().toDateString()
+        const ultimaData = localStorage.getItem('vestibular_last_date')
+        if (ultimaData !== hoje) {
+            const novaStreak = streak + 1
+            setStreak(novaStreak)
+            localStorage.setItem('vestibular_streak', novaStreak.toString())
+            localStorage.setItem('vestibular_last_date', hoje)
+        }
+
+        // Atualizar Caderno de Erros e Relatório por Tópico
+        const novosErros = [...cadernoErros]
+        const relatorio: Record<string, { total: number, erros: number }> = {}
+
+        questoes.forEach(q => {
+            const topico = q.topico || 'Geral'
+            if (!relatorio[topico]) relatorio[topico] = { total: 0, erros: 0 }
+            relatorio[topico].total++
+
+            if (respostas[q.id] !== undefined && respostas[q.id] !== q.alternativaCorreta) {
+                relatorio[topico].erros++
+                if (!novosErros.includes(q.id)) novosErros.push(q.id)
+            }
+        })
+        setRelatorioErros(relatorio)
+        setCadernoErros(novosErros)
+        localStorage.setItem('vestibular_caderno', JSON.stringify(novosErros))
+
         window.scrollTo({ top: 0, behavior: 'smooth' })
+        toast.success(`Simulado finalizado! +${ganhoXp} XP conquistados.`)
+    }
+
+    const formatTime = (seconds: number) => {
+        const h = Math.floor(seconds / 3600)
+        const m = Math.floor((seconds % 3600) / 60)
+        const s = seconds % 60
+        return `${h > 0 ? h + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
     }
 
     const calcularAcertos = () => {
@@ -157,6 +245,71 @@ export function Simulador() {
 
     return (
         <div className="w-full space-y-12">
+
+            {/* Header de Gamificação e Status */}
+            <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-zinc-900 text-white rounded-2xl shadow-xl">
+                <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2">
+                        <div className="p-2 bg-yellow-500/20 rounded-lg">
+                            <Sparkles className="h-5 w-5 text-yellow-500" />
+                        </div>
+                        <div>
+                            <p className="text-[10px] uppercase font-bold text-zinc-500">Nível Estudante</p>
+                            <p className="text-sm font-bold">{Math.floor(xp / 100) + 1} • {xp} XP</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="p-2 bg-orange-500/20 rounded-lg">
+                            <TrendingUp className="h-5 w-5 text-orange-500" />
+                        </div>
+                        <div>
+                            <p className="text-[10px] uppercase font-bold text-zinc-500">Estudo Diário</p>
+                            <p className="text-sm font-bold">{streak} Dias 🔥</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-zinc-400 hover:text-white hover:bg-white/10"
+                        onClick={() => toast.info(`Você tem ${cadernoErros.length} questões no seu caderno de erros.`)}
+                    >
+                        <History className="h-4 w-4 mr-2" />
+                        Caderno de Erros ({cadernoErros.length})
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="bg-transparent border-zinc-700 text-zinc-300 hover:bg-white/5"
+                        onClick={() => window.print()}
+                    >
+                        <BarChart3 className="h-4 w-4 mr-2" />
+                        Exportar PDF
+                    </Button>
+                </div>
+            </div>
+
+            {/* Timer Sticky (Apenas durante o simulado) */}
+            <AnimatePresence>
+                {questoes.length > 0 && !showResult && timeLeft !== null && (
+                    <motion.div
+                        initial={{ y: -100 }}
+                        animate={{ y: 0 }}
+                        exit={{ y: -100 }}
+                        className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-full max-w-xs"
+                    >
+                        <div className="bg-zinc-900/90 backdrop-blur-md border border-white/10 p-3 rounded-2xl shadow-2xl flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className={`h-2 w-2 rounded-full animate-pulse ${timeLeft < 300 ? 'bg-red-500' : 'bg-green-500'}`} />
+                                <span className="text-white font-mono font-bold text-lg">{formatTime(timeLeft)}</span>
+                            </div>
+                            <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Tempo Restante</div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Configuração Card - Glassmorphism */}
             <motion.div
@@ -255,6 +408,38 @@ export function Simulador() {
                                             <SelectItem value="Baixa">Baixa Probabilidade</SelectItem>
                                         </SelectContent>
                                     </Select>
+                                </div>
+
+                                <div className="space-y-2 group/input">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-zinc-400 group-hover/input:text-zinc-900 transition-colors">Ano</Label>
+                                    <Select
+                                        value={config.ano}
+                                        onValueChange={(v) => setConfig(prev => ({ ...prev, ano: v }))}
+                                    >
+                                        <SelectTrigger className="h-12 bg-zinc-50/50 border-zinc-200 focus:ring-2 focus:ring-zinc-900/10 transition-all hover:bg-zinc-50">
+                                            <SelectValue placeholder="Selecione" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Todos">Todos</SelectItem>
+                                            {[2024, 2023, 2022, 2021, 2020, 2019].map(y => (
+                                                <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2 group/input md:col-span-2 lg:col-span-4">
+                                    <Label className="text-xs font-bold uppercase tracking-wider text-zinc-400 group-hover/input:text-zinc-900 transition-colors">Busca por Palavra-chave (Opcional)</Label>
+                                    <div className="relative">
+                                        <Filter className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Ex: Termodinâmica, Revolução Francesa..."
+                                            className="w-full h-12 pl-12 pr-4 bg-zinc-50/50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900/10 transition-all"
+                                            value={config.busca}
+                                            onChange={(e) => setConfig(prev => ({ ...prev, busca: e.target.value }))}
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
@@ -414,10 +599,23 @@ export function Simulador() {
                                                         </Badge>
                                                     </div>
                                                     <div className="flex flex-col gap-2">
-                                                        <div className="flex items-center gap-2 text-blue-600 font-bold text-lg">
-                                                            <span>Questão {index + 1}</span>
-                                                            <span className="text-blue-300 font-light">|</span>
-                                                            <span className="text-zinc-500 font-medium text-sm uppercase tracking-wide">({q.fonte})</span>
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2 text-blue-600 font-bold text-lg">
+                                                                <span>Questão {index + 1}</span>
+                                                                <span className="text-blue-300 font-light">|</span>
+                                                                <span className="text-zinc-500 font-medium text-sm uppercase tracking-wide">({q.fonte})</span>
+                                                            </div>
+                                                            {showResult && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="text-blue-600 hover:bg-blue-50 h-8"
+                                                                    onClick={() => window.open(`https://www.youtube.com/results?search_query=resolução+questão+${q.fonte}+${q.topico}`, '_blank')}
+                                                                >
+                                                                    <TrendingUp className="h-4 w-4 mr-2" />
+                                                                    Resolução em Vídeo
+                                                                </Button>
+                                                            )}
                                                         </div>
                                                         <h3 className="text-xl font-medium leading-relaxed text-zinc-800">
                                                             {q.enunciado}
@@ -570,6 +768,34 @@ export function Simulador() {
                                                     "Você acertou a base, mas deslizou em detalhes específicos. Revise os conceitos fundamentais antes de avançar." :
                                                     "Recomendamos focar na teoria básica antes de tentar novos simulados. Use a explicação das questões erradas como roteiro de estudo."}
                                         </p>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-white/10">
+                                        <div className="flex items-center gap-2 text-red-400 font-bold text-sm mb-3">
+                                            <BarChart3 className="h-4 w-4" />
+                                            Desempenho por Tópico
+                                        </div>
+                                        <div className="space-y-3">
+                                            {Object.entries(relatorioErros).map(([topico, dados]) => {
+                                                const percAcerto = Math.round(((dados.total - dados.erros) / dados.total) * 100)
+                                                return (
+                                                    <div key={topico} className="space-y-1">
+                                                        <div className="flex justify-between text-xs">
+                                                            <span className="text-zinc-300">{topico}</span>
+                                                            <span className={percAcerto >= 70 ? 'text-green-400' : percAcerto >= 40 ? 'text-orange-400' : 'text-red-400'}>
+                                                                {percAcerto}% acerto
+                                                            </span>
+                                                        </div>
+                                                        <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                                                            <div
+                                                                className={`h-full transition-all duration-1000 ${percAcerto >= 70 ? 'bg-green-500' : percAcerto >= 40 ? 'bg-orange-500' : 'bg-red-500'}`}
+                                                                style={{ width: `${percAcerto}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
                                     </div>
 
                                     <div className="pt-4 border-t border-white/10">

@@ -201,7 +201,8 @@ const QUESTOES_DB_MOCK = [
     explicacao: 'M = C * (1 + i)^t. M = 1000 * (1,1)^2 = 1000 * 1,21 = 1210.',
     dificuldade: 'Fácil',
     topico: 'Matemática Financeira',
-    fonte: 'Simulação IA'
+    fonte: 'Simulação IA',
+    ano: 2024
   },
   {
     disciplina: 'Física',
@@ -211,9 +212,31 @@ const QUESTOES_DB_MOCK = [
     explicacao: 'Vm = DeltaS / DeltaT = 100 / 2 = 50 km/h.',
     dificuldade: 'Fácil',
     topico: 'Mecânica (Cinemática/Dinâmica)',
-    fonte: 'Simulação IA'
+    fonte: 'Simulação IA',
+    ano: 2023
   },
-  // ... (O código irá gerar variações dessas questões para preencher a quantidade)
+  {
+    disciplina: 'História',
+    enunciado: 'A Revolução Francesa (1789) teve como um de seus principais marcos a Queda da Bastilha. Qual era o lema dos revolucionários?',
+    alternativas: ['Ordem e Progresso', 'Liberdade, Igualdade e Fraternidade', 'Paz, Terra e Pão', 'Deus, Pátria e Família', 'Vencer ou Morrer'],
+    alternativaCorreta: 1,
+    explicacao: 'O lema "Liberté, Égalité, Fraternité" tornou-se o símbolo da República Francesa e dos ideais iluministas.',
+    dificuldade: 'Média',
+    topico: 'Revolução Francesa',
+    fonte: 'ENEM 2022',
+    ano: 2022
+  },
+  {
+    disciplina: 'Biologia',
+    enunciado: 'Qual organela celular é responsável pela produção de energia (ATP) através da respiração celular?',
+    alternativas: ['Ribossomo', 'Complexo de Golgi', 'Mitocôndria', 'Lisossomo', 'Cloroplasto'],
+    alternativaCorreta: 2,
+    explicacao: 'As mitocôndrias são as "usinas" de energia da célula, realizando o ciclo de Krebs e a cadeia respiratória.',
+    dificuldade: 'Fácil',
+    topico: 'Citologia',
+    fonte: 'FUVEST 2023',
+    ano: 2023
+  }
 ];
 
 export async function POST(request: NextRequest) {
@@ -224,7 +247,9 @@ export async function POST(request: NextRequest) {
       disciplina = 'Matemática',
       dificuldade = 'Todas', // Fácil, Média, Difícil
       probabilidade = 'Todas', // Alta (>0.2), Média (>0.1), Baixa
-      modo = 'padrao' // 'padrao' | 'maratona'
+      modo = 'padrao', // 'padrao' | 'maratona'
+      ano = 'Todos',
+      busca = ''
     } = body;
 
     // 1. Determinar Quantidade Oficial
@@ -250,9 +275,20 @@ export async function POST(request: NextRequest) {
         return true;
       });
 
-      // Se filtrar demais e sobrar nada, volta pro fallback (mas avisa na analise)
       if (topicosDisponiveis.length === 0) {
         topicosDisponiveis = TOPICOS_BASE[disciplina] || []; // Reset
+      }
+    }
+
+    // 3. Filtrar por Busca (Palavra-chave)
+    if (busca) {
+      const buscaLower = busca.toLowerCase();
+      topicosDisponiveis = topicosDisponiveis.filter(t =>
+        t.nome.toLowerCase().includes(buscaLower)
+      );
+      if (topicosDisponiveis.length === 0) {
+        // Se não achar no tópico, a gente mantém os tópicos mas a IA vai "simular" a busca no enunciado depois
+        topicosDisponiveis = TOPICOS_BASE[disciplina] || [];
       }
     }
 
@@ -321,8 +357,8 @@ export async function POST(request: NextRequest) {
         alternativaCorreta: baseQ ? baseQ.alternativaCorreta : 1,
         explicacao: baseQ ? baseQ.explicacao : `Explicação detalhada sobre ${topicoEscolhido.nome} focada no nível ${difQuestao}.`,
         dificuldade: difQuestao,
-        fonte: `${tipoProva} ${2010 + Math.floor(Math.random() * 15)}`,
-        ano: 2010 + Math.floor(Math.random() * 15)
+        fonte: ano !== 'Todos' ? `${tipoProva} ${ano}` : (baseQ ? baseQ.fonte : `${tipoProva} ${2010 + Math.floor(Math.random() * 15)}`),
+        ano: ano !== 'Todos' ? parseInt(ano) : (baseQ ? (baseQ.ano || 2022) : 2010 + Math.floor(Math.random() * 15))
       });
     }
 
